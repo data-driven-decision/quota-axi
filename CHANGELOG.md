@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.35](https://github.com/kunchenguid/quota-axi/compare/quota-axi-v0.1.34...quota-axi-v0.1.35) (2026-08-31)
+
+
+### Bug Fixes
+
+* **providers:** read Pi Codex OAuth credentials ([#132](https://github.com/kunchenguid/quota-axi/issues/132)) ([2b1b45e](https://github.com/kunchenguid/quota-axi/commit/2b1b45ecdb687a1770830cf10cd0c9573a6dbcfe))
+
 ## [0.1.34](https://github.com/kunchenguid/quota-axi/compare/quota-axi-v0.1.33...quota-axi-v0.1.34) (2026-08-29)
 
 
