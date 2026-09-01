@@ -125,6 +125,13 @@ export function createMinimaxAdapter(
           } else if (probe.kind === "inconclusive") {
             inconclusiveError = probe.error;
           }
+        } else if (resolution.status === "error") {
+          // The re-resolve needed to fetch the probeable access token failed
+          // transiently (e.g. the credential store became unreadable between
+          // inspect() and resolve()). That proves nothing about the stored
+          // "expired" verdict either way, so it must not be reported as the
+          // same definitive expiry as an actual rejection.
+          inconclusiveError = "credential_resolution_failed";
         }
       }
       const error =

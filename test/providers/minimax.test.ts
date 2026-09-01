@@ -602,6 +602,29 @@ describe("MiniMax auth inspection", () => {
       error: "provider_unavailable",
     });
   });
+
+  it("does not report a confirmed expiry when the re-resolve needed to probe it fails transiently", async () => {
+    const request = vi.fn();
+    const report = await createMinimaxAdapter({
+      broker: {
+        inspect: vi.fn(async () => "expired"),
+        resolve: vi.fn(async () => {
+          throw new Error("credential store became unreadable");
+        }),
+      },
+      fetch: request,
+    }).inspectAuth(OPTIONS);
+
+    expect(request).not.toHaveBeenCalled();
+    expect(report.sources[0]).not.toMatchObject({
+      status: "expired",
+      error: "pi_minimax_credential_expired",
+    });
+    expect(report.sources[0]).toMatchObject({
+      status: "error",
+      error: "credential_resolution_failed",
+    });
+  });
 });
 
 describe("MiniMax adapter identity", () => {
