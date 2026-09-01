@@ -105,6 +105,25 @@ export function createMinimaxAdapter(
       } catch {
         inspection = "error";
       }
+      // Stored expiry is advisory ordering, never a verdict (mirroring the
+      // acquireMinimaxQuota probe above): before telling a caller a
+      // credential is expired, test the stored access token against
+      // MiniMax's own endpoint rather than trusting local metadata alone.
+      if (inspection === "expired") {
+        let resolution: MinimaxCredentialResolution;
+        try {
+          resolution = await dependencies.broker.resolve();
+        } catch {
+          resolution = { status: "error" };
+        }
+        if (
+          resolution.status === "expired" &&
+          resolution.credential !== undefined &&
+          (await probesAsLive(resolution.credential, dependencies))
+        ) {
+          inspection = "available";
+        }
+      }
       const error =
         inspection === "unsupported"
           ? "unsupported_credential_type"
@@ -161,7 +180,10 @@ async function acquireMinimaxQuota(
 
   if (credential === undefined) {
     const failure = credentialFailureFor(
-      resolution as Exclude<MinimaxCredentialResolution, { status: "available" }>,
+      resolution as Exclude<
+        MinimaxCredentialResolution,
+        { status: "available" }
+      >,
     );
     attempts = [
       {
@@ -204,6 +226,31 @@ async function acquireMinimaxQuota(
       },
     ];
     return failureReport(failure, attempts, dependencies);
+  }
+}
+
+/**
+ * Empirically tests a stored-expired access token against MiniMax's own
+ * endpoint. Only a definitive credential rejection counts as still expired;
+ * an inconclusive transport failure (network, timeout, rate limit, ...)
+ * proves nothing either way, so it is not treated as confirmation of
+ * liveness and the caller keeps reporting the stored-expired verdict.
+ */
+async function probesAsLive(
+  credential: string,
+  dependencies: MinimaxDependencies,
+): Promise<boolean> {
+  try {
+    const payload = await requestMinimaxQuota(
+      credential,
+      dependencies.fetch,
+      dependencies.deadlineMs,
+      dependencies.now,
+    );
+    normalizeMinimaxPayload(payload);
+    return true;
+  } catch {
+    return false;
   }
 }
 

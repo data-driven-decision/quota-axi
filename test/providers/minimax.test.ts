@@ -459,10 +459,9 @@ describe("MiniMax credential outcomes and cache policy", () => {
 });
 
 describe("MiniMax auth inspection", () => {
-  it("reports available, expired, unsupported, missing, and error inspections", async () => {
+  it("reports available, unsupported, missing, and error inspections", async () => {
     const cases: [MinimaxCredentialInspection, string | undefined][] = [
       ["available", undefined],
-      ["expired", "pi_minimax_credential_expired"],
       ["unsupported", "unsupported_credential_type"],
       ["missing", undefined],
       ["error", "credential_resolution_failed"],
@@ -470,7 +469,7 @@ describe("MiniMax auth inspection", () => {
     for (const [inspection, error] of cases) {
       const report = await createMinimaxAdapter({
         broker: {
-          resolve: vi.fn(),
+          resolve: vi.fn(async () => ({ status: inspection }) as never),
           inspect: vi.fn(async () => inspection),
         },
       }).inspectAuth(OPTIONS);
@@ -481,11 +480,9 @@ describe("MiniMax auth inspection", () => {
           {
             source: "pi:minimax-cn",
             status:
-              inspection === "expired"
-                ? "expired"
-                : inspection === "unsupported" || inspection === "error"
-                  ? "invalid"
-                  : inspection,
+              inspection === "unsupported" || inspection === "error"
+                ? "invalid"
+                : inspection,
             ...(error ? { error } : {}),
           },
         ],
@@ -506,6 +503,62 @@ describe("MiniMax auth inspection", () => {
     expect(report.sources[0]).toMatchObject({
       status: "invalid",
       error: "credential_resolution_failed",
+    });
+  });
+
+  it("reports expired without a testable access token, without a network call", async () => {
+    const request = vi.fn();
+    const report = await createMinimaxAdapter({
+      broker: broker({ status: "expired", refreshable: true }),
+      fetch: request,
+    }).inspectAuth(OPTIONS);
+
+    expect(request).not.toHaveBeenCalled();
+    expect(report.sources[0]).toMatchObject({
+      status: "expired",
+      error: "pi_minimax_credential_expired",
+    });
+  });
+
+  it("probes a stored-expired access token and reports available when the server still accepts it", async () => {
+    const request = vi.fn(async () => jsonResponse(PROVISIONED_PAYLOAD));
+    const report = await createMinimaxAdapter({
+      broker: broker({
+        status: "expired",
+        refreshable: true,
+        credential: "stale-but-still-live-token",
+      }),
+      fetch: request,
+    }).inspectAuth(OPTIONS);
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(report.sources[0]).toEqual({
+      source: "pi:minimax-cn",
+      status: "available",
+    });
+  });
+
+  it("keeps reporting expired when a stored-expired access token is empirically rejected", async () => {
+    const request = vi.fn(
+      async () =>
+        new Response(null, {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    const report = await createMinimaxAdapter({
+      broker: broker({
+        status: "expired",
+        refreshable: true,
+        credential: "stale-and-actually-dead-token",
+      }),
+      fetch: request,
+    }).inspectAuth(OPTIONS);
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(report.sources[0]).toMatchObject({
+      status: "expired",
+      error: "pi_minimax_credential_expired",
     });
   });
 });
