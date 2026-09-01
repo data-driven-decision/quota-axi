@@ -3,6 +3,7 @@ import { isAbsolute, join } from "node:path";
 import { spawn } from "node:child_process";
 import { readCachedProvider } from "../cache.js";
 import { readJsonFileResult, type JsonFileReadResult } from "../lib/fs.js";
+import { providerFetch } from "../lib/http.js";
 import { findCommandPath, terminateChild } from "../lib/process.js";
 import {
   clampPercent,
@@ -670,7 +671,7 @@ async function fetchOauthUsage(credentials: CodexCredentials): Promise<{
       };
       if (credentials.accountId)
         headers["ChatGPT-Account-Id"] = credentials.accountId;
-      const response = await fetch(endpoint, {
+      const response = await providerFetch(endpoint, {
         headers,
         signal: controller.signal,
       });

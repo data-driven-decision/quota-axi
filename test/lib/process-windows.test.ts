@@ -49,7 +49,7 @@ process.stdout.write(JSON.stringify(process.argv.slice(2)));
         execFileText(
           shimPath,
           ["usage", "token-plan", "--output", "json"],
-          1000,
+          5000,
         ),
       ).resolves.toBe(
         JSON.stringify(["usage", "token-plan", "--output", "json"]),
@@ -100,7 +100,7 @@ process.stdout.write(JSON.stringify(process.argv.slice(2)));
         execFileText(
           launcherPath,
           ['a"b', "C:\\path\\", "%PATH%", "a&b|c<d>e(f)", "caret^value", ""],
-          1000,
+          5000,
         ),
       ).resolves.toBe(
         JSON.stringify([

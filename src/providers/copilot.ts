@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { readCachedProvider } from "../cache.js";
 import { readJsonFileResult, type JsonFileReadResult } from "../lib/fs.js";
+import { providerFetch } from "../lib/http.js";
 import {
   clampPercent,
   nowIso,
@@ -156,7 +157,7 @@ async function fetchCopilotUser(credentials: CopilotCredentials): Promise<{
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
   try {
-    const response = await fetch(USER_URL, {
+    const response = await providerFetch(USER_URL, {
       headers: {
         authorization: `Bearer ${credentials.oauthToken}`,
         accept: "application/json",

@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { readCachedProvider } from "../cache.js";
 import { readJsonFileResult, type JsonFileReadResult } from "../lib/fs.js";
+import { providerFetch } from "../lib/http.js";
 import { nowIso, retryAfterToIso } from "../lib/time.js";
 import type {
   AuthProviderReport,
@@ -819,7 +820,7 @@ async function fetchGrokConsumerQuota(
   try {
     let response: Response;
     try {
-      response = await fetch(CONSUMER_QUOTA_URL, {
+      response = await providerFetch(CONSUMER_QUOTA_URL, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${credentials.key}`,

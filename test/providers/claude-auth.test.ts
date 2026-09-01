@@ -508,7 +508,7 @@ describe("Claude credential-state reporting", () => {
     },
   );
 
-  it.each([401, 403])(
+  it.each([401])(
     "bypasses and retires stale cache after usage HTTP %i",
     async (status) => {
       vi.useFakeTimers();
@@ -543,6 +543,44 @@ describe("Claude credential-state reporting", () => {
       expect(readCachedProvider("claude")).toBeUndefined();
     },
   );
+
+  it("keeps cache and does not report sign-out for a policy-denied HTTP 403", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-06T20:00:00.000Z"));
+    const home = useTempHome();
+    writeClaudeCredential(home, {
+      accessToken: "future-token",
+      expiresAt: "2035-01-01T00:00:00.000Z",
+    });
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ error: { message: "Request not allowed" } }),
+          { status: 403, headers: { "content-type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { readCachedProvider, writeCachedProviders } =
+      await import("../../src/cache.js");
+    writeCachedProviders([cachedClaudeQuota(34)]);
+
+    const { fetchQuota } = await import("../../src/providers/claude.js");
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      source: "cache",
+      state: {
+        status: "stale",
+        stale: true,
+        error: "Claude quota unavailable (403)",
+      },
+    });
+    expect(readCachedProvider("claude")).toBeDefined();
+  });
 
   it("uses an eligible bounded snapshot for timeout, network, 429, and 5xx failures", async () => {
     vi.useFakeTimers();
@@ -1334,7 +1372,7 @@ describe("Claude credential-state reporting", () => {
     expect(process.exitCode).toBeUndefined();
   });
 
-  it.each([401, 403])(
+  it.each([401])(
     "reports a pinned Keychain HTTP %i as definitive in full CLI output",
     async (status) => {
       usePlatform("darwin");
