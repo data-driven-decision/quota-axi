@@ -14,12 +14,7 @@ import type {
   SourceAttempt,
 } from "../types.js";
 import { VERSION } from "../version.js";
-import {
-  failedProvider,
-  sourceNames,
-  staleFromCache,
-  successProvider,
-} from "./common.js";
+import { failedProvider, sourceNames, successProvider } from "./common.js";
 import {
   createPiMinimaxCredentialBroker,
   type MinimaxCredentialBroker,
@@ -296,14 +291,16 @@ function failureReport(
   if (failure.staleEligible) {
     try {
       const cached = dependencies.readCachedProvider("minimax");
-      if (cached && cached.provider === "minimax" && cached.source === "api") {
-        return staleFromCache(
-          cached,
-          failure.code,
-          sourceNames(attempts),
-          attempts,
-        );
-      }
+      const stale = cached
+        ? staleMinimaxReport(
+            cached,
+            failure.code,
+            sourceNames(attempts),
+            attempts,
+            dependencies.now(),
+          )
+        : undefined;
+      if (stale) return stale;
     } catch {
       // Cache I/O cannot replace the bounded current provider failure.
     }
@@ -318,6 +315,60 @@ function failureReport(
     sourcesTried: sourceNames(attempts),
     attempts,
   });
+}
+
+/**
+ * Mirrors the zai/kimi stale-cache contract: a prior snapshot is only
+ * reused when it is a fresh same-provider API read, and only for the
+ * windows within it that have not aged past their own reset time or
+ * (absent a reset) their own reported duration. A window whose duration
+ * is unknown cannot be aged out safely, so it is dropped rather than
+ * republished indefinitely.
+ */
+function staleMinimaxReport(
+  cached: ProviderQuota,
+  error: string,
+  sourcesTried: string[],
+  attempts: SourceAttempt[],
+  now: number,
+): ProviderQuota | undefined {
+  if (
+    cached.provider !== "minimax" ||
+    cached.source !== "api" ||
+    cached.state.status !== "fresh" ||
+    !cached.state.refreshedAt
+  ) {
+    return undefined;
+  }
+  const refreshedAt = Date.parse(cached.state.refreshedAt);
+  if (!Number.isFinite(refreshedAt)) return undefined;
+  const ageMilliseconds = Math.max(0, now - refreshedAt);
+  const windows = cached.windows.filter((window) => {
+    if (window.resetsAt) {
+      const resetsAt = Date.parse(window.resetsAt);
+      if (Number.isFinite(resetsAt)) return resetsAt > now;
+    }
+    if (window.windowSeconds === undefined || window.windowSeconds <= 0) {
+      return false;
+    }
+    return ageMilliseconds < window.windowSeconds * 1_000;
+  });
+  if (windows.length === 0) return undefined;
+
+  return {
+    provider: "minimax",
+    label: LABEL,
+    source: "cache",
+    windows,
+    state: {
+      status: "stale",
+      stale: true,
+      refreshedAt: cached.state.refreshedAt,
+      error,
+      sourcesTried: [...new Set([...sourcesTried, "cache"])],
+    },
+    attempts,
+  };
 }
 
 async function requestMinimaxQuota(

@@ -371,6 +371,25 @@ describe("MiniMax credential outcomes and cache policy", () => {
     });
   });
 
+  it("drops a cached window whose own duration has already elapsed instead of republishing it", async () => {
+    const cached = cachedQuota();
+    const report = await testAdapter({
+      broker: broker({ status: "error" }),
+      readCachedProvider: () => ({
+        ...cached,
+        state: {
+          ...cached.state,
+          // Refreshed long enough ago that the 4h interval window in
+          // cachedQuota() has already elapsed by NOW.
+          refreshedAt: "2027-02-02T12:00:00.000Z",
+        },
+      }),
+    }).fetchQuota(OPTIONS);
+
+    expect(report.source).toBe("unavailable");
+    expect(report.state.status).toBe("error");
+  });
+
   it("uses stale cache for transient HTTP and parser failures", async () => {
     for (const response of [
       new Response(null, { status: 408 }),
