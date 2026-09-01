@@ -104,6 +104,10 @@ export function createMinimaxAdapter(
       // acquireMinimaxQuota probe above): before telling a caller a
       // credential is expired, test the stored access token against
       // MiniMax's own endpoint rather than trusting local metadata alone.
+      // A transient probe failure (timeout, rate limit, outage) proves
+      // nothing either way, so it must not be reported as the same
+      // definitive "expired" verdict as an actual credential rejection.
+      let inconclusiveError: string | undefined;
       if (inspection === "expired") {
         let resolution: MinimaxCredentialResolution;
         try {
@@ -113,17 +117,21 @@ export function createMinimaxAdapter(
         }
         if (
           resolution.status === "expired" &&
-          resolution.credential !== undefined &&
-          (await probesAsLive(resolution.credential, dependencies))
+          resolution.credential !== undefined
         ) {
-          inspection = "available";
+          const probe = await probesAsLive(resolution.credential, dependencies);
+          if (probe.kind === "live") {
+            inspection = "available";
+          } else if (probe.kind === "inconclusive") {
+            inconclusiveError = probe.error;
+          }
         }
       }
       const error =
         inspection === "unsupported"
           ? "unsupported_credential_type"
           : inspection === "expired"
-            ? "pi_minimax_credential_expired"
+            ? (inconclusiveError ?? "pi_minimax_credential_expired")
             : inspection === "error"
               ? "credential_resolution_failed"
               : undefined;
@@ -136,7 +144,9 @@ export function createMinimaxAdapter(
               inspection === "available"
                 ? "available"
                 : inspection === "expired"
-                  ? "expired"
+                  ? inconclusiveError
+                    ? "error"
+                    : "expired"
                   : error
                     ? "invalid"
                     : "missing",
@@ -224,17 +234,23 @@ async function acquireMinimaxQuota(
   }
 }
 
+type MinimaxProbeOutcome =
+  | { kind: "live" }
+  | { kind: "rejected" }
+  | { kind: "inconclusive"; error: string };
+
 /**
  * Empirically tests a stored-expired access token against MiniMax's own
- * endpoint. Only a definitive credential rejection counts as still expired;
- * an inconclusive transport failure (network, timeout, rate limit, ...)
- * proves nothing either way, so it is not treated as confirmation of
- * liveness and the caller keeps reporting the stored-expired verdict.
+ * endpoint. Only a definitive credential rejection (`rejected`) counts as
+ * still expired; an inconclusive transport failure (network, timeout, rate
+ * limit, ...) proves nothing either way and is reported distinctly
+ * (`inconclusive`) rather than being folded into the same verdict as a
+ * confirmed rejection.
  */
 async function probesAsLive(
   credential: string,
   dependencies: MinimaxDependencies,
-): Promise<boolean> {
+): Promise<MinimaxProbeOutcome> {
   try {
     const payload = await requestMinimaxQuota(
       credential,
@@ -243,9 +259,16 @@ async function probesAsLive(
       dependencies.now,
     );
     normalizeMinimaxPayload(payload);
-    return true;
-  } catch {
-    return false;
+    return { kind: "live" };
+  } catch (error) {
+    if (error instanceof MinimaxFailure && error.definitiveAuth) {
+      return { kind: "rejected" };
+    }
+    return {
+      kind: "inconclusive",
+      error:
+        error instanceof MinimaxFailure ? error.code : "quota_request_failed",
+    };
   }
 }
 

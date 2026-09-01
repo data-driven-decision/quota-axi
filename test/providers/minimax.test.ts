@@ -580,6 +580,28 @@ describe("MiniMax auth inspection", () => {
       error: "pi_minimax_credential_expired",
     });
   });
+
+  it("does not report a confirmed expiry when probing a stored-expired token only fails transiently", async () => {
+    const request = vi.fn(async () => new Response(null, { status: 503 }));
+    const report = await createMinimaxAdapter({
+      broker: broker({
+        status: "expired",
+        refreshable: true,
+        credential: "stale-token-server-is-just-down",
+      }),
+      fetch: request,
+    }).inspectAuth(OPTIONS);
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(report.sources[0]).not.toMatchObject({
+      status: "expired",
+      error: "pi_minimax_credential_expired",
+    });
+    expect(report.sources[0]).toMatchObject({
+      status: "error",
+      error: "provider_unavailable",
+    });
+  });
 });
 
 describe("MiniMax adapter identity", () => {
