@@ -271,18 +271,13 @@ describe("MiniMax credential outcomes and cache policy", () => {
   it.each([
     ["missing", "minimax_credential_unavailable"],
     ["unsupported", "unsupported_credential_type"],
-    ["expired", "pi_minimax_credential_expired"],
   ] as const)(
     "makes no request for %s credentials and retires cache",
     async (status, code) => {
       const request = vi.fn();
       const remove = vi.fn();
       const report = await testAdapter({
-        broker: broker(
-          status === "expired"
-            ? { status: "expired", refreshable: true }
-            : { status },
-        ),
+        broker: broker({ status }),
         fetch: request,
         deleteCachedProvider: remove,
         readCachedProvider: () => cachedQuota(),
@@ -298,6 +293,63 @@ describe("MiniMax credential outcomes and cache policy", () => {
       expect(report.windows).toEqual([]);
     },
   );
+
+  it("makes no request for an expired credential with no testable access token and retires cache", async () => {
+    const request = vi.fn();
+    const remove = vi.fn();
+    const report = await testAdapter({
+      broker: broker({ status: "expired", refreshable: true }),
+      fetch: request,
+      deleteCachedProvider: remove,
+      readCachedProvider: () => cachedQuota(),
+    }).fetchQuota(OPTIONS);
+
+    expect(request).not.toHaveBeenCalled();
+    expect(remove).toHaveBeenCalledWith("minimax");
+    expect(report.state).toMatchObject({
+      status: "auth_required",
+      stale: false,
+      error: "pi_minimax_credential_expired",
+    });
+    expect(report.windows).toEqual([]);
+  });
+
+  it("probes a stored-expired access token instead of declaring sign-out from local metadata alone", async () => {
+    const request = vi.fn(async () => jsonResponse(PROVISIONED_PAYLOAD));
+    const report = await testAdapter({
+      broker: broker({
+        status: "expired",
+        refreshable: true,
+        credential: "stale-but-still-live-token",
+      }),
+      fetch: request,
+    }).fetchQuota(OPTIONS);
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(report.state).toMatchObject({ status: "fresh", stale: false });
+    expect(report.windows).not.toEqual([]);
+  });
+
+  it("reports auth_required when a stored-expired access token is empirically rejected", async () => {
+    const remove = vi.fn();
+    const report = await testAdapter({
+      broker: broker({
+        status: "expired",
+        refreshable: true,
+        credential: "stale-and-actually-dead-token",
+      }),
+      fetch: vi.fn(async () => new Response(null, { status: 401 })),
+      deleteCachedProvider: remove,
+      readCachedProvider: () => cachedQuota(),
+    }).fetchQuota(OPTIONS);
+
+    expect(remove).toHaveBeenCalledWith("minimax");
+    expect(report.state).toMatchObject({
+      status: "auth_required",
+      stale: false,
+      error: "provider_auth_rejected",
+    });
+  });
 
   it("uses eligible cached windows after an unexpected resolver failure", async () => {
     const cached = cachedQuota();

@@ -148,8 +148,21 @@ async function acquireMinimaxQuota(
 
   let attempts: SourceAttempt[];
 
-  if (resolution.status !== "available") {
-    const failure = credentialFailureFor(resolution);
+  // Stored expiry is advisory ordering, never a verdict: an expired-but-
+  // testable access token is still probed against MiniMax's own endpoint
+  // (the quota request doubles as the liveness probe) rather than declared
+  // signed out from local metadata alone, mirroring pi-xai-credential.ts.
+  const credential =
+    resolution.status === "available"
+      ? resolution.credential
+      : resolution.status === "expired"
+        ? resolution.credential
+        : undefined;
+
+  if (credential === undefined) {
+    const failure = credentialFailureFor(
+      resolution as Exclude<MinimaxCredentialResolution, { status: "available" }>,
+    );
     attempts = [
       {
         source: PI_MINIMAX_CREDENTIAL_SOURCE,
@@ -162,7 +175,7 @@ async function acquireMinimaxQuota(
 
   try {
     const payload = await requestMinimaxQuota(
-      resolution.credential,
+      credential,
       dependencies.fetch,
       dependencies.deadlineMs,
       dependencies.now,

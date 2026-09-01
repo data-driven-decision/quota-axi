@@ -13,7 +13,16 @@ export type MinimaxCredentialResolution =
       credential: string;
     }
   | { status: "missing" }
-  | { status: "expired"; refreshable: boolean }
+  | {
+      status: "expired";
+      refreshable: boolean;
+      /**
+       * The stored access token, present so a bounded read-only liveness
+       * probe can test it despite the stored expiry field, mirroring
+       * pi-xai-credential.ts. Probe use only; never log or render.
+       */
+      credential?: string;
+    }
   | { status: "unsupported" }
   | { status: "error" };
 
@@ -104,6 +113,7 @@ async function resolveCredential(
       return {
         status: "expired",
         refreshable: usableLiteralSecret(entry.refresh) !== undefined,
+        credential: access,
       };
     }
     return { status: "available", kind: "oauth", credential: access };

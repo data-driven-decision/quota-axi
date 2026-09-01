@@ -274,10 +274,11 @@ describe("Pi MiniMax credential broker", () => {
 
     const resolution = await createPiMinimaxCredentialBroker().resolve();
 
-    expect(resolution).toEqual({ status: "expired", refreshable: true });
-    expect(JSON.stringify(resolution)).not.toContain(
-      "pi-oauth-expired-access-770",
-    );
+    expect(resolution).toEqual({
+      status: "expired",
+      refreshable: true,
+      credential: "pi-oauth-expired-access-770",
+    });
     expect(JSON.stringify(resolution)).not.toContain("must-not-be-refreshed");
     await expect(createPiMinimaxCredentialBroker().inspect()).resolves.toBe(
       "expired",
@@ -294,6 +295,7 @@ describe("Pi MiniMax credential broker", () => {
     await expect(createPiMinimaxCredentialBroker().resolve()).resolves.toEqual({
       status: "expired",
       refreshable: false,
+      credential: "pi-oauth-terminal-access-119",
     });
   });
 
