@@ -42,6 +42,14 @@ const USER_AGENT = `quota-axi/${VERSION}`;
  * `model:<name>` scope instead of folded into the shared one.
  */
 const PRIMARY_MODEL_NAME = "general";
+/**
+ * MiniMax's documented `base_resp.status_code` for "auth mismatch" (the
+ * stored API key does not match/authenticate the account). This arrives
+ * over HTTP 200, so it must be classified from the JSON body rather than
+ * the HTTP status, and it is a definitive credential rejection like a
+ * 401/403 would be, not a generic rejected request.
+ */
+const AUTH_MISMATCH_STATUS_CODE = 1004;
 
 type WindowScope = "interval" | "weekly";
 
@@ -444,6 +452,12 @@ export function normalizeMinimaxPayload(
 
   const baseResp = objectValue(root.base_resp);
   const statusCode = numericScalar(baseResp?.status_code);
+  if (statusCode === AUTH_MISMATCH_STATUS_CODE) {
+    throw new MinimaxFailure("provider_auth_rejected", {
+      status: "auth_required",
+      definitiveAuth: true,
+    });
+  }
   if (statusCode !== undefined && statusCode !== 0) {
     throw new MinimaxFailure("provider_request_rejected");
   }

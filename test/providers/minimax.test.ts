@@ -233,7 +233,7 @@ describe("MiniMax request transport", () => {
       fetch: vi.fn(async () =>
         jsonResponse({
           model_remains: [],
-          base_resp: { status_code: 1004, status_msg: "auth mismatch" },
+          base_resp: { status_code: 1013, status_msg: "unknown error" },
         }),
       ),
     }).fetchQuota(OPTIONS);
@@ -242,6 +242,28 @@ describe("MiniMax request transport", () => {
       status: "error",
       error: "provider_request_rejected",
     });
+  });
+
+  it("retires cache and reports auth_required on a base_resp auth mismatch", async () => {
+    const remove = vi.fn();
+    const report = await testAdapter({
+      deleteCachedProvider: remove,
+      readCachedProvider: () => cachedQuota(),
+      fetch: vi.fn(async () =>
+        jsonResponse({
+          model_remains: [],
+          base_resp: { status_code: 1004, status_msg: "auth mismatch" },
+        }),
+      ),
+    }).fetchQuota(OPTIONS);
+
+    expect(remove).toHaveBeenCalledWith("minimax");
+    expect(report.state).toMatchObject({
+      status: "auth_required",
+      stale: false,
+      error: "provider_auth_rejected",
+    });
+    expect(report.windows).toEqual([]);
   });
 });
 
