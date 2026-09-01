@@ -66,6 +66,7 @@ The `--tui` surface is a convenience for a human at a terminal, not a second pro
 
 quota-axi is not a router, not a proxy, not a gateway, not a login manager, not an auth app, not a hosted service, and not a desktop application.
 Delegating one renewal to the CLI that owns a credential store does not make it any of those: it mints nothing, stores nothing, and adds no identity of its own.
+Sending its own outbound vendor calls through the host's already-configured `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` egress path does not make it a proxy or gateway either: quota-axi routes nothing on anyone else's behalf, exposes no proxy service, and reads no proxy URL into its output; it only reaches the same address it would have reached directly, by the path the host already requires.
 Coverage of popular agents is wanted and pursued on a best-effort basis, and it grows in this tree rather than through a third-party interface that would run unreviewed code against a user's credentials.
 Where a vendor reports money as reliably as it reports capacity, reporting money is open to it; a signal that can only be made accurate for a few providers does not ship.
 Adapter behavior is clean-room from a vendor's own observable behavior, and third-party data is attributed rather than republished.
