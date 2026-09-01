@@ -283,7 +283,7 @@ It is generated from `src/skill.ts`; update it with `pnpm run build:skill` and v
 ```
 
 - **Live first** - provider HTTP calls use 15 second request timeouts, Codex JSON-RPC and Antigravity loopback reads use shorter per-call timeouts, and stale cache fallback is per provider.
-- **Host network policy** - outbound provider HTTP calls honor standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables (including lowercase forms). This only follows the user's configured egress path; quota-axi does not expose a proxy service or print proxy URLs.
+- **Host network policy** - Claude, Codex, Copilot, Cursor, and Grok's outbound HTTP calls honor standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables (including lowercase forms). This only follows the user's configured egress path; quota-axi does not expose a proxy service or print proxy URLs.
 - **No first-run Keychain prompt** - macOS Claude and Cursor CLI Keychain value reads are skipped on plain calls until `--allow-keychain-prompt` succeeds once for that source, then future plain calls reuse the corresponding grant.
 - **Delegated refresh, never minted** - when the same stored access token is expired, carries a refresh token, and is definitively rejected, quota-axi may run that vendor CLI's own smallest non-interactive refresh command and re-read the store the CLI rewrote. quota-axi never performs a refresh-token exchange itself. See [Delegated credential refresh](#delegated-credential-refresh).
 - **Partial success is success** - one provider can fail while another returns fresh or stale data, and the process still exits 0. Exit code 1 means every provider failed, and 2 means a usage error.
