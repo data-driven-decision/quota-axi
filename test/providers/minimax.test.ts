@@ -522,6 +522,41 @@ describe("MiniMax auth inspection", () => {
     });
   });
 
+  it("reports missing when the credential disappears between inspect() and resolve()", async () => {
+    const request = vi.fn();
+    const report = await createMinimaxAdapter({
+      broker: {
+        inspect: vi.fn(async () => "expired"),
+        resolve: vi.fn(async () => ({ status: "missing" })),
+      },
+      fetch: request,
+    }).inspectAuth(OPTIONS);
+
+    expect(request).not.toHaveBeenCalled();
+    expect(report.sources[0]).toEqual({
+      source: "pi:minimax-cn",
+      status: "missing",
+    });
+  });
+
+  it("reports unsupported when the credential's type changes between inspect() and resolve()", async () => {
+    const request = vi.fn();
+    const report = await createMinimaxAdapter({
+      broker: {
+        inspect: vi.fn(async () => "expired"),
+        resolve: vi.fn(async () => ({ status: "unsupported" })),
+      },
+      fetch: request,
+    }).inspectAuth(OPTIONS);
+
+    expect(request).not.toHaveBeenCalled();
+    expect(report.sources[0]).toEqual({
+      source: "pi:minimax-cn",
+      status: "invalid",
+      error: "unsupported_credential_type",
+    });
+  });
+
   it("keeps reporting expired when a stored-expired access token is empirically rejected", async () => {
     const request = vi.fn(
       async () =>

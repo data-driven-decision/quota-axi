@@ -116,6 +116,17 @@ export function createMinimaxAdapter(
           // already shows a live credential, so pick that up instead of
           // keeping the stale "expired" verdict from the earlier read.
           inspection = "available";
+        } else if (resolution.status === "missing") {
+          // The credential disappeared between the two reads (e.g. Pi's
+          // auth.json was deleted or the entry removed): the fresh read
+          // supersedes the stale "expired" verdict from the earlier read,
+          // mirroring the "available" branch above.
+          inspection = "missing";
+        } else if (resolution.status === "unsupported") {
+          // The credential's stored type changed to something unsupported
+          // between the two reads: same reasoning as the "missing" branch
+          // above, the fresh read wins over the stale "expired" verdict.
+          inspection = "unsupported";
         } else if (
           resolution.status === "expired" &&
           resolution.credential !== undefined
