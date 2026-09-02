@@ -9,7 +9,7 @@ import type {
   MinimaxCredentialInspection,
   MinimaxCredentialResolution,
 } from "../../src/providers/pi-minimax-credential.js";
-import type { ProviderAdapter, ProviderQuota } from "../../src/types.js";
+import type { ProviderAdapter } from "../../src/types.js";
 
 const NOW = Date.parse("2027-02-03T04:05:06.000Z");
 const OPTIONS = { allowKeychainPrompt: false, refreshCredentials: false };
@@ -248,7 +248,6 @@ describe("MiniMax request transport", () => {
     const remove = vi.fn();
     const report = await testAdapter({
       deleteCachedProvider: remove,
-      readCachedProvider: () => cachedQuota(),
       fetch: vi.fn(async () =>
         jsonResponse({
           model_remains: [],
@@ -280,7 +279,6 @@ describe("MiniMax credential outcomes and cache policy", () => {
         broker: broker({ status }),
         fetch: request,
         deleteCachedProvider: remove,
-        readCachedProvider: () => cachedQuota(),
       }).fetchQuota(OPTIONS);
 
       expect(request).not.toHaveBeenCalled();
@@ -301,7 +299,6 @@ describe("MiniMax credential outcomes and cache policy", () => {
       broker: broker({ status: "expired", refreshable: true }),
       fetch: request,
       deleteCachedProvider: remove,
-      readCachedProvider: () => cachedQuota(),
     }).fetchQuota(OPTIONS);
 
     expect(request).not.toHaveBeenCalled();
@@ -340,7 +337,6 @@ describe("MiniMax credential outcomes and cache policy", () => {
       }),
       fetch: vi.fn(async () => new Response(null, { status: 401 })),
       deleteCachedProvider: remove,
-      readCachedProvider: () => cachedQuota(),
     }).fetchQuota(OPTIONS);
 
     expect(remove).toHaveBeenCalledWith("minimax");
@@ -351,46 +347,21 @@ describe("MiniMax credential outcomes and cache policy", () => {
     });
   });
 
-  it("uses eligible cached windows after an unexpected resolver failure", async () => {
-    const cached = cachedQuota();
+  it("reports an honest error after an unexpected resolver failure instead of serving cache", async () => {
     const report = await testAdapter({
       broker: broker({ status: "error" }),
-      readCachedProvider: () => cached,
-    }).fetchQuota(OPTIONS);
-
-    expect(report).toMatchObject({
-      source: "cache",
-      windows: cached.windows,
-      state: {
-        status: "stale",
-        stale: true,
-        error: "credential_resolution_failed",
-        refreshedAt: cached.state.refreshedAt,
-        sourcesTried: ["pi:minimax-cn", "cache"],
-      },
-    });
-  });
-
-  it("drops a cached window whose own duration has already elapsed instead of republishing it", async () => {
-    const cached = cachedQuota();
-    const report = await testAdapter({
-      broker: broker({ status: "error" }),
-      readCachedProvider: () => ({
-        ...cached,
-        state: {
-          ...cached.state,
-          // Refreshed long enough ago that the 4h interval window in
-          // cachedQuota() has already elapsed by NOW.
-          refreshedAt: "2027-02-02T12:00:00.000Z",
-        },
-      }),
     }).fetchQuota(OPTIONS);
 
     expect(report.source).toBe("unavailable");
-    expect(report.state.status).toBe("error");
+    expect(report.state).toMatchObject({
+      status: "error",
+      stale: false,
+      error: "credential_resolution_failed",
+    });
+    expect(report.windows).toEqual([]);
   });
 
-  it("uses stale cache for transient HTTP and parser failures", async () => {
+  it("never serves cached windows for transient HTTP and parser failures", async () => {
     for (const response of [
       new Response(null, { status: 408 }),
       new Response(null, { status: 502 }),
@@ -401,14 +372,15 @@ describe("MiniMax credential outcomes and cache policy", () => {
     ]) {
       const report = await testAdapter({
         fetch: vi.fn(async () => response),
-        readCachedProvider: () => cachedQuota(),
       }).fetchQuota(OPTIONS);
-      expect(report.state.status).toBe("stale");
-      expect(report.source).toBe("cache");
+      expect(report.state.status).toBe("error");
+      expect(report.state.stale).toBe(false);
+      expect(report.source).toBe("unavailable");
+      expect(report.windows).toEqual([]);
     }
   });
 
-  it("falls back to stale cache on a rate-limited response", async () => {
+  it("reports rate_limited with Retry-After instead of falling back to cache", async () => {
     const report = await testAdapter({
       fetch: vi.fn(
         async () =>
@@ -417,34 +389,17 @@ describe("MiniMax credential outcomes and cache policy", () => {
             headers: { "retry-after": "120" },
           }),
       ),
-      readCachedProvider: () => cachedQuota(),
       now: () => NOW,
     }).fetchQuota(OPTIONS);
 
-    expect(report.state).toMatchObject({
-      status: "stale",
-      error: "provider_rate_limited",
-    });
-  });
-
-  it("reports Retry-After on a rate-limited failure with no cache to fall back to", async () => {
-    const report = await testAdapter({
-      fetch: vi.fn(
-        async () =>
-          new Response(null, {
-            status: 429,
-            headers: { "retry-after": "120" },
-          }),
-      ),
-      readCachedProvider: () => undefined,
-      now: () => NOW,
-    }).fetchQuota(OPTIONS);
-
+    expect(report.source).toBe("unavailable");
     expect(report.state).toMatchObject({
       status: "rate_limited",
+      stale: false,
       error: "provider_rate_limited",
       retryAfter: "2027-02-03T04:07:06.000Z",
     });
+    expect(report.windows).toEqual([]);
   });
 
   it("retires cache and reports auth_required on a definitive 401/403", async () => {
@@ -453,7 +408,6 @@ describe("MiniMax credential outcomes and cache policy", () => {
       const report = await testAdapter({
         fetch: vi.fn(async () => new Response(null, { status })),
         deleteCachedProvider: remove,
-        readCachedProvider: () => cachedQuota(),
       }).fetchQuota(OPTIONS);
 
       expect(remove).toHaveBeenCalledWith("minimax");
@@ -464,16 +418,6 @@ describe("MiniMax credential outcomes and cache policy", () => {
       });
       expect(report.source).toBe("unavailable");
     }
-  });
-
-  it("does not reuse cache from a different provider or source", async () => {
-    const report = await testAdapter({
-      fetch: vi.fn(async () => new Response(null, { status: 500 })),
-      readCachedProvider: () => ({ ...cachedQuota(), source: "cache" }),
-    }).fetchQuota(OPTIONS);
-
-    expect(report.source).toBe("unavailable");
-    expect(report.state.status).toBe("error");
   });
 });
 
@@ -699,33 +643,8 @@ function testAdapter(
       kind: "api_key",
       credential: "synthetic-minimax-key-741",
     }),
-    readCachedProvider: () => undefined,
     deleteCachedProvider: () => undefined,
     now: () => NOW,
     ...overrides,
   });
-}
-
-function cachedQuota(): ProviderQuota {
-  return {
-    provider: "minimax",
-    label: "MiniMax",
-    source: "api",
-    windows: [
-      {
-        id: "interval",
-        label: "interval",
-        kind: "session",
-        percentUsed: 20,
-        percentRemaining: 80,
-        windowSeconds: 14_400,
-      },
-    ],
-    state: {
-      status: "fresh",
-      stale: false,
-      refreshedAt: "2027-02-03T02:00:00.000Z",
-      sourcesTried: ["pi:minimax-cn"],
-    },
-  };
 }
