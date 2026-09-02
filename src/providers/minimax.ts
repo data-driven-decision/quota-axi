@@ -115,7 +115,13 @@ export function createMinimaxAdapter(
         } catch {
           resolution = { status: "error" };
         }
-        if (
+        if (resolution.status === "available") {
+          // Pi rewrote auth.json (e.g. renewed the credential) between the
+          // inspect() read above and this resolve() read: the fresh read
+          // already shows a live credential, so pick that up instead of
+          // keeping the stale "expired" verdict from the earlier read.
+          inspection = "available";
+        } else if (
           resolution.status === "expired" &&
           resolution.credential !== undefined
         ) {

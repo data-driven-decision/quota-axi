@@ -557,6 +557,27 @@ describe("MiniMax auth inspection", () => {
     });
   });
 
+  it("reports available when the credential is renewed between inspect() and resolve()", async () => {
+    const request = vi.fn();
+    const report = await createMinimaxAdapter({
+      broker: {
+        inspect: vi.fn(async () => "expired"),
+        resolve: vi.fn(async () => ({
+          status: "available",
+          kind: "oauth",
+          credential: "freshly-renewed-token",
+        })),
+      },
+      fetch: request,
+    }).inspectAuth(OPTIONS);
+
+    expect(request).not.toHaveBeenCalled();
+    expect(report.sources[0]).toEqual({
+      source: "pi:minimax-cn",
+      status: "available",
+    });
+  });
+
   it("keeps reporting expired when a stored-expired access token is empirically rejected", async () => {
     const request = vi.fn(
       async () =>
