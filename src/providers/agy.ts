@@ -1,7 +1,7 @@
 import * as http from "node:http";
 import * as https from "node:https";
 import { deleteCachedProvider, readCachedProvider } from "../cache.js";
-import { execFileText } from "../lib/process.js";
+import { currentUserProcessListArgs, execFileText } from "../lib/process.js";
 import {
   clampPercent,
   nowIso,
@@ -481,7 +481,7 @@ async function readProcessList(
     return await withinProbeBudget(deadline, PROCESS_TIMEOUT_MS, (timeoutMs) =>
       runtime.execFileText(
         "ps",
-        ["-x", "-u", String(effectiveUid), "-o", "pid=,command="],
+        currentUserProcessListArgs(effectiveUid),
         timeoutMs,
       ),
     );

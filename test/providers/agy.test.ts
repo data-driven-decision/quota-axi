@@ -5,6 +5,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { currentUserProcessListArgs } from "../../src/lib/process.js";
 import { readCachedProvider, writeCachedProviders } from "../../src/cache.js";
 import {
   fetchQuotaWithRuntime,
@@ -531,7 +532,7 @@ describe("Antigravity provider", () => {
     expect(commands).toEqual([
       {
         command: "ps",
-        args: ["-x", "-u", String(process.geteuid()), "-o", "pid=,command="],
+        args: currentUserProcessListArgs(process.geteuid() as number),
       },
       {
         command: "lsof",

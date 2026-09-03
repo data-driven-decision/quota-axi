@@ -21,7 +21,9 @@ export function execFileText(
       invocation.args,
       {
         timeout: timeoutMs,
-        maxBuffer: 1024 * 1024,
+        // A busy multi-agent host's full `ps` table with command lines runs
+        // well past 1 MiB, which surfaced as an unexplained probe failure.
+        maxBuffer: 16 * 1024 * 1024,
         ...(invocation.environment ? { env: invocation.environment } : {}),
       },
       (error, stdout) => {
@@ -174,4 +176,15 @@ export function terminateChild(child: ChildProcess): void {
   const forceKill = setTimeout(() => child.kill("SIGKILL"), 2000);
   forceKill.unref();
   child.once("exit", () => clearTimeout(forceKill));
+}
+
+// Linux procps rejects the BSD `-x` selector alongside `-u` ("must set
+// personality to get -x option"), so only macOS/BSD gets it. Both list the
+// current user's processes including ones without a controlling terminal.
+export function currentUserProcessListArgs(effectiveUid: number): string[] {
+  const selector =
+    process.platform === "linux"
+      ? ["-u", String(effectiveUid)]
+      : ["-x", "-u", String(effectiveUid)];
+  return [...selector, "-o", "pid=,command="];
 }
